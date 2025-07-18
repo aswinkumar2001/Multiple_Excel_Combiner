@@ -5,6 +5,7 @@ import zipfile
 from datetime import datetime
 import xlsxwriter
 import os
+import re
 
 # Streamlit app configuration
 st.set_page_config(page_title="Excel Files Combiner", layout="wide")
@@ -29,6 +30,15 @@ if 'processed_sheets' not in st.session_state:
 
 # File uploader for ZIP file
 zip_file = st.file_uploader("Upload ZIP file containing Excel files", type=["zip"])
+
+def sanitize_sheet_name(sheet_name):
+    """Sanitize sheet name by replacing invalid characters with _ and ensuring length <= 31."""
+    # Define invalid characters for Excel sheet names
+    invalid_chars = r'[/\\*?:[\]]'
+    sanitized = re.sub(invalid_chars, '_', sheet_name)
+    # Truncate to 31 characters if necessary
+    sanitized = sanitized[:31]
+    return sanitized
 
 def get_column_options(excel_files, zip_buffer):
     """Extract unique column names from all sheets in all Excel files."""
@@ -90,8 +100,16 @@ def process_excel_file(file_content, file_name, filter_conditions, logic, previe
             st.session_state.error_sheets.append(f"{file_name}: No sheets found")
             return processed, preview_data
         for sheet_name, df in sheets.items():
-            sanitized_sheet_name = sheet_name.replace('/', '_').replace('\\', '_')
-            new_sheet_name = f"{sanitized_sheet_name}_{os.path.splitext(file_name)[0]}"[:31]
+            # Sanitize the sheet name and base filename
+            sanitized_sheet_name = sanitize_sheet_name(sheet_name)
+            base_filename = os.path.splitext(file_name)[0]
+            sanitized_filename = sanitize_sheet_name(base_filename)
+            new_sheet_name = f"{sanitized_sheet_name}_{sanitized_filename}"[:31]
+            
+            # Check if sanitization modified the name and warn if so
+            if sanitized_sheet_name != sheet_name or sanitized_filename != base_filename:
+                st.warning(f"Sheet '{sheet_name}' from '{file_name}' renamed to '{new_sheet_name}' due to invalid characters (e.g., /, -, *, ?, :, [, ]) replaced with _")
+            
             try:
                 if df.empty:
                     st.session_state.error_sheets.append(f"{sheet_name} in {file_name}: Sheet is empty")
